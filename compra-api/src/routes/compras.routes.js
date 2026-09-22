@@ -1,26 +1,33 @@
 const express = require("express");
 const router = express.Router();
-const compras = require("../data/compras");
+const db = require("../config/db");
 const { obtenerCliente } = require("../services/clienteService");
 const { obtenerProducto } = require("../services/productoService");
 
-let siguienteId = 1;
-
 // GET /compras
-router.get("/", (req, res) => {
-  res.status(200).json(compras);
+router.get("/", async (req, res) => {
+  try {
+    const result = await db.query("SELECT * FROM compras ORDER BY id ASC");
+    res.status(200).json(result.rows);
+  } catch (error) {
+    res.status(500).json({ mensaje: "Error al obtener las compras", error: error.message });
+  }
 });
 
 // GET /compras/:id
-router.get("/:id", (req, res) => {
+router.get("/:id", async (req, res) => {
   const id = Number(req.params.id);
-  const compra = compras.find((compra) => compra.id === id);
+  try {
+    const result = await db.query("SELECT * FROM compras WHERE id = $1", [id]);
 
-  if (!compra) {
-    return res.status(404).json({ mensaje: "Compra no encontrada" });
+    if (result.rows.length === 0) {
+      return res.status(404).json({ mensaje: "Compra no encontrada" });
+    }
+
+    res.status(200).json(result.rows[0]);
+  } catch (error) {
+    res.status(500).json({ mensaje: "Error al buscar la compra", error: error.message });
   }
-
-  res.status(200).json(compra);
 });
 
 // POST /compras
@@ -60,17 +67,35 @@ router.post("/", async (req, res) => {
     });
   }
 
-  const nuevaCompra = {
-    id: siguienteId++,
-    clienteId,
-    productoId,
-    cantidad,
-    total: producto.precio * cantidad,
-    fecha: new Date().toISOString()
-  };
+  const totalCalculado = producto.precio * cantidad;
 
-  compras.push(nuevaCompra);
-  res.status(201).json(nuevaCompra);
+  // Manejo de Transacción SQL con Pool de PostgreSQL
+  const client = await db.pool.connect();
+
+  try {
+    await client.query("BEGIN");
+
+    // 1. Insertar la compra
+    const resultCompra = await client.query(
+      `INSERT INTO compras (cliente_id, producto_id, cantidad, total) 
+       VALUES ($1, $2, $3, $4) RETURNING *`,
+      [clienteId, productoId, cantidad, totalCalculado]
+    );
+
+    // 2. Descontar el stock en la tabla de productos
+    await client.query(
+      "UPDATE productos SET stock = stock - $1 WHERE id = $2",
+      [cantidad, productoId]
+    );
+
+    await client.query("COMMIT");
+    res.status(201).json(resultCompra.rows[0]);
+  } catch (error) {
+    await client.query("ROLLBACK");
+    res.status(500).json({ mensaje: "Error al procesar la compra", error: error.message });
+  } finally {
+    client.release();
+  }
 });
 
 module.exports = router;
