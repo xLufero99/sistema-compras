@@ -1,69 +1,88 @@
 const express = require("express");
 const router = express.Router();
-const clientes = require("../data/clientes");
-
-let siguienteId = 3;
+const db = require("../config/db");
 
 // GET /clientes
-router.get("/", (req, res) => {
-  res.status(200).json(clientes);
+router.get("/", async (req, res) => {
+  try {
+    const result = await db.query("SELECT * FROM clientes ORDER BY id ASC");
+    res.status(200).json(result.rows);
+  } catch (error) {
+    res.status(500).json({ mensaje: "Error al obtener los clientes", error: error.message });
+  }
 });
 
 // GET /clientes/:id
-router.get("/:id", (req, res) => {
+router.get("/:id", async (req, res) => {
   const id = Number(req.params.id);
-  const cliente = clientes.find((cliente) => cliente.id === id);
+  try {
+    const result = await db.query("SELECT * FROM clientes WHERE id = $1", [id]);
+    
+    if (result.rows.length === 0) {
+      return res.status(404).json({ mensaje: "Cliente no encontrado" });
+    }
 
-  if (!cliente) {
-    return res.status(404).json({ mensaje: "Cliente no encontrado" });
+    res.status(200).json(result.rows[0]);
+  } catch (error) {
+    res.status(500).json({ mensaje: "Error al consultar el cliente", error: error.message });
   }
-
-  res.status(200).json(cliente);
 });
 
 // POST /clientes
-router.post("/", (req, res) => {
+router.post("/", async (req, res) => {
   const { nombre, email } = req.body;
 
   if (!nombre || !email) {
-    return res
-      .status(400)
-      .json({ mensaje: "Los campos 'nombre' y 'email' son obligatorios" });
+    return res.status(400).json({ mensaje: "Los campos 'nombre' y 'email' son obligatorios" });
   }
 
-  const nuevoCliente = { id: siguienteId++, nombre, email };
-  clientes.push(nuevoCliente);
-  res.status(201).json(nuevoCliente);
+  try {
+    const result = await db.query(
+      "INSERT INTO clientes (nombre, email) VALUES ($1, $2) RETURNING *",
+      [nombre, email]
+    );
+    res.status(201).json(result.rows[0]);
+  } catch (error) {
+    res.status(500).json({ mensaje: "Error al registrar cliente", error: error.message });
+  }
 });
 
 // PUT /clientes/:id
-router.put("/:id", (req, res) => {
+router.put("/:id", async (req, res) => {
   const id = Number(req.params.id);
-  const cliente = clientes.find((cliente) => cliente.id === id);
-
-  if (!cliente) {
-    return res.status(404).json({ mensaje: "Cliente no encontrado" });
-  }
-
   const { nombre, email } = req.body;
 
-  if (nombre !== undefined) cliente.nombre = nombre;
-  if (email !== undefined) cliente.email = email;
+  try {
+    const result = await db.query(
+      "UPDATE clientes SET nombre = COALESCE($1, nombre), email = COALESCE($2, email) WHERE id = $3 RETURNING *",
+      [nombre, email, id]
+    );
 
-  res.status(200).json(cliente);
+    if (result.rows.length === 0) {
+      return res.status(404).json({ mensaje: "Cliente no encontrado" });
+    }
+
+    res.status(200).json(result.rows[0]);
+  } catch (error) {
+    res.status(500).json({ mensaje: "Error al actualizar cliente", error: error.message });
+  }
 });
 
 // DELETE /clientes/:id
-router.delete("/:id", (req, res) => {
+router.delete("/:id", async (req, res) => {
   const id = Number(req.params.id);
-  const indice = clientes.findIndex((cliente) => cliente.id === id);
 
-  if (indice === -1) {
-    return res.status(404).json({ mensaje: "Cliente no encontrado" });
+  try {
+    const result = await db.query("DELETE FROM clientes WHERE id = $1 RETURNING *", [id]);
+
+    if (result.rows.length === 0) {
+      return res.status(404).json({ mensaje: "Cliente no encontrado" });
+    }
+
+    res.status(204).send();
+  } catch (error) {
+    res.status(500).json({ mensaje: "Error al eliminar cliente", error: error.message });
   }
-
-  clientes.splice(indice, 1);
-  res.status(204).send();
 });
 
 module.exports = router;
