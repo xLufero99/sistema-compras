@@ -1,0 +1,93 @@
+services:
+  db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: ${DB_USER:?DB_USER no definida en el .env raíz}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:?DB_PASSWORD no definida en el .env raíz}
+      POSTGRES_DB: ${DB_NAME:?DB_NAME no definida en el .env raíz}
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./database/init.sql:/docker-entrypoint-initdb.d/001-init.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d sistema_compras"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    restart: unless-stopped
+
+  cliente-api:
+    build:
+      context: ./cliente-api
+    environment:
+      PORT: ${CLIENTE_API_PORT}
+      DB_USER: ${DB_USER:?DB_USER no definida en el .env raíz}
+      DB_PASSWORD: ${DB_PASSWORD:?DB_PASSWORD no definida en el .env raíz}
+      DB_HOST: ${DB_HOST:?DB_HOST no definida en el .env raíz}
+      DB_PORT: ${DB_PORT}
+      DB_NAME: ${DB_NAME:?DB_NAME no definida en el .env raíz}
+    ports:
+      - "${CLIENTE_API_PORT}:${CLIENTE_API_PORT}"
+    depends_on:
+      db:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://localhost:${CLIENTE_API_PORT}/').then(r => { if (!r.ok) process.exit(1) }).catch(() => process.exit(1))"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+
+  producto-api:
+    build:
+      context: ./producto-api
+    environment:
+      PORT: ${PRODUCTO_API_PORT}
+      DB_USER: ${DB_USER:?DB_USER no definida en el .env raíz}
+      DB_PASSWORD: ${DB_PASSWORD:?DB_PASSWORD no definida en el .env raíz}
+      DB_HOST: ${DB_HOST:?DB_HOST no definida en el .env raíz}
+      DB_PORT: ${DB_PORT}
+      DB_NAME: ${DB_NAME:?DB_NAME no definida en el .env raíz}
+    ports:
+      - "${PRODUCTO_API_PORT}:${PRODUCTO_API_PORT}"
+    depends_on:
+      db:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://localhost:${PRODUCTO_API_PORT}/').then(r => { if (!r.ok) process.exit(1) }).catch(() => process.exit(1))"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+
+  compra-api:
+    build:
+      context: ./compra-api
+    environment:
+      PORT: ${COMPRA_API_PORT}
+      CLIENTE_API_URL: ${CLIENTE_API_URL:?CLIENTE_API_URL no definida en el .env raíz}
+      PRODUCTO_API_URL: ${PRODUCTO_API_URL:?PRODUCTO_API_URL no definida en el .env raíz}
+      DB_USER: ${DB_USER:?DB_USER no definida en el .env raíz}
+      DB_PASSWORD: ${DB_PASSWORD:?DB_PASSWORD no definida en el .env raíz}
+      DB_HOST: ${DB_HOST:?DB_HOST no definida en el .env raíz}
+      DB_PORT: ${DB_PORT}
+      DB_NAME: ${DB_NAME:?DB_NAME no definida en el .env raíz}
+    ports:
+      - "${COMPRA_API_PORT}:${COMPRA_API_PORT}"
+    depends_on:
+      db:
+        condition: service_healthy
+      cliente-api:
+        condition: service_healthy
+      producto-api:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://localhost:${COMPRA_API_PORT}/').then(r => { if (!r.ok) process.exit(1) }).catch(() => process.exit(1))"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+
+volumes:
+  postgres_data:

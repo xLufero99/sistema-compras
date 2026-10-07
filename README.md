@@ -20,6 +20,53 @@ El sistema consta de 3 microservicios que se comunican entre sí:
 
 El servicio **`compra-api`** actúa como orquestador, comunicándose mediante peticiones HTTP con los otros dos servicios para validar la existencia del cliente, verificar el stock del producto y procesar la transacción.
 
+## Ejecución con Docker Compose
+
+Desde la raíz del proyecto, primero configura las variables de entorno:
+
+```bash
+cp .env.example .env
+```
+
+Edita `.env` (raíz) con tus valores. Este archivo lo lee **docker compose** en
+tu máquina para resolver las variables `${...}` de `docker-compose.yml`; no se
+copia a los contenedores. Si falta una variable crítica, compose falla con un
+mensaje de error indicando cuál.
+
+Luego:
+
+```bash
+docker compose up --build
+```
+
+Esto inicia PostgreSQL y los tres microservicios:
+
+- `cliente-api`: http://localhost:3001
+- `producto-api`: http://localhost:3002
+- `compra-api`: http://localhost:3003
+
+La base de datos utiliza el volumen `postgres_data`. El script `database/init.sql`
+se ejecuta automáticamente únicamente cuando PostgreSQL se inicializa por primera vez.
+Para eliminar también los datos persistidos:
+
+```bash
+docker compose down -v
+```
+
+### Variables de entorno
+
+| Archivo | Quién lo lee | Cuándo se usa |
+|---|---|---|
+| `/.env` (raíz) | docker compose (interpolación `${VAR}`) | `docker compose up` |
+| `*/.env` (por servicio) | `dotenv` dentro del proceso Node | Ejecución local sin Docker (`node src/server.js`) |
+
+Los `.env` de cada servicio contienen valores para desarrollo local
+(`DB_HOST=localhost`, URLs `http://localhost:...`). **No se usan con Docker**:
+los contenedores reciben su configuración desde los `environment:` del
+`docker-compose.yml`, alimentados por el `.env` raíz. Los `.env` de cada
+servicio y el raíz no se commitean (`.gitignore`); usa los `.env.example`
+como plantilla.
+
 ---
 
 ## Base de Datos (PostgreSQL)
