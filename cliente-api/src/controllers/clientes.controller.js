@@ -73,6 +73,11 @@ const actualizarCliente = async (req, res) => {
   }
 };
 
+const esViolacionForeignKey = (error) =>
+  error.name === "SequelizeForeignKeyConstraintError" ||
+  error.original?.code === "23503" ||
+  /foreign key constraint|RESTRICT setting/i.test(error.message || "");
+
 const eliminarCliente = async (req, res) => {
   const id = obtenerId(req.params.id);
   if (!id) return res.status(400).json({ mensaje: "El id debe ser un entero positivo" });
@@ -82,6 +87,11 @@ const eliminarCliente = async (req, res) => {
     if (!cantidad) return res.status(404).json({ mensaje: "Cliente no encontrado" });
     res.status(204).send();
   } catch (error) {
+    if (esViolacionForeignKey(error)) {
+      return res.status(409).json({
+        mensaje: "No se puede eliminar el cliente porque tiene compras asociadas",
+      });
+    }
     res.status(500).json({ mensaje: "Error al eliminar cliente", error: error.message });
   }
 };
